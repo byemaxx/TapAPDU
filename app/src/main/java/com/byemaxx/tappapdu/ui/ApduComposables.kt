@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.byemaxx.tappapdu.constants.CommandPresets
+import com.byemaxx.tappapdu.model.GpoConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,9 +24,11 @@ fun ApduSender(
     log: String,
     apduCommand: String,
     isAutoMode: Boolean,
+        gpoConfig: GpoConfig,
     onCommandChange: (String) -> Unit,
     onAutoModeChange: (Boolean) -> Unit,
-    onClearLog: () -> Unit
+    onClearLog: () -> Unit,
+    onGpoConfigChange: (GpoConfig) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -49,8 +52,10 @@ fun ApduSender(
             ConfigurationCard(
                 apduCommand = apduCommand,
                 isAutoMode = isAutoMode,
+                                gpoConfig = gpoConfig,
                 onCommandChange = onCommandChange,
-                onAutoModeChange = onAutoModeChange
+                onAutoModeChange = onAutoModeChange,
+                onGpoConfigChange = onGpoConfigChange
             )
 
             // Log Section
@@ -67,10 +72,12 @@ fun ApduSender(
 
 @Composable
 fun ConfigurationCard(
+        gpoConfig: GpoConfig,
     apduCommand: String,
     isAutoMode: Boolean,
     onCommandChange: (String) -> Unit,
-    onAutoModeChange: (Boolean) -> Unit
+    onAutoModeChange: (Boolean) -> Unit,
+    onGpoConfigChange: (GpoConfig) -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -101,28 +108,39 @@ fun ConfigurationCard(
                 }
             }
 
-            // Input Field (Disabled in Auto Mode)
-            OutlinedTextField(
-                value = apduCommand,
-                onValueChange = onCommandChange,
-                label = { Text("APDU Hex Command") },
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = TextStyle(fontFamily = FontFamily.Monospace),
-                singleLine = true,
-                enabled = !isAutoMode,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f)
+            // Input Field (Manual Mode only)
+            if (!isAutoMode) {
+                OutlinedTextField(
+                    value = apduCommand,
+                    onValueChange = onCommandChange,
+                    label = { Text("APDU Hex Command") },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+            }
 
-            // Presets
-            PresetsSection(
-                isAutoMode = isAutoMode,
-                onCommandChange = onCommandChange,
-                onAutoModeChange = onAutoModeChange
-            )
+            // Presets (Manual Mode)
+            if (!isAutoMode) {
+                PresetsSection(
+                    isAutoMode = isAutoMode,
+                    onCommandChange = onCommandChange,
+                    onAutoModeChange = onAutoModeChange
+                )
+            }
+
+            // GPO Configuration (only visible in Auto Mode)
+            if (isAutoMode) {
+                GpoConfigSection(
+                    config = gpoConfig,
+                    onConfigChange = onGpoConfigChange,
+                    enabled = true
+                )
+            }
         }
     }
 }

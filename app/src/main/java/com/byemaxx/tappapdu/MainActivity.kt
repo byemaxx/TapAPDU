@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import com.byemaxx.tappapdu.constants.CommandPresets
 import com.byemaxx.tappapdu.nfc.NfcHandler
+import com.byemaxx.tappapdu.model.GpoConfig
 import com.byemaxx.tappapdu.ui.ApduSender
 import com.byemaxx.tappapdu.ui.theme.TapAPDUTheme
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private val _log = mutableStateOf("")
     private val _apduCommand = mutableStateOf(CommandPresets.PPSE) // Default PPSE
     private val _isAutoMode = mutableStateOf(true)
+    private val _gpoConfig = mutableStateOf(GpoConfig())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,9 +39,11 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                         log = _log.value,
                         apduCommand = _apduCommand.value,
                         isAutoMode = _isAutoMode.value,
+                                                gpoConfig = _gpoConfig.value,
                         onCommandChange = { _apduCommand.value = it },
                         onAutoModeChange = { _isAutoMode.value = it },
-                        onClearLog = { _log.value = "" }
+                        onClearLog = { _log.value = "" },
+                        onGpoConfigChange = { _gpoConfig.value = it }
                     )
                 }
             }
@@ -62,7 +66,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     }
 
     override fun onTagDiscovered(tag: Tag?) {
-        val result = nfcHandler.processTag(tag, _isAutoMode.value, _apduCommand.value)
+        val result = nfcHandler.processTag(tag, _isAutoMode.value, _apduCommand.value, _gpoConfig.value)
         runOnUiThread {
             _log.value = result + "\n" + _log.value
         }

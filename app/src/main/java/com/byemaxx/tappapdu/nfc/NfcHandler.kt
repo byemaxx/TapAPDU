@@ -3,6 +3,7 @@ package com.byemaxx.tappapdu.nfc
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import com.byemaxx.tappapdu.constants.CommandPresets
+import com.byemaxx.tappapdu.model.GpoConfig
 import com.byemaxx.tappapdu.utils.ApduUtils
 import com.byemaxx.tappapdu.utils.MetaUtils
 import com.byemaxx.tappapdu.utils.TlvUtils
@@ -10,7 +11,7 @@ import java.io.IOException
 
 class NfcHandler {
     
-    fun processTag(tag: Tag?, isAutoMode: Boolean, manualCommand: String): String {
+    fun processTag(tag: Tag?, isAutoMode: Boolean, manualCommand: String, gpoConfig: GpoConfig? = null): String {
         val isoDep = IsoDep.get(tag) ?: return "Error: No IsoDep tag found"
         
         return try {
@@ -18,9 +19,9 @@ class NfcHandler {
             isoDep.timeout = 5000
             
             val result = if (isAutoMode) {
-                processAutoScan(isoDep)
+                processAutoScan(isoDep, gpoConfig)
             } else {
-                processManualCommand(isoDep, manualCommand)
+                processManualCommand(isoDep, manualCommand, gpoConfig)
             }
             
             isoDep.close()
@@ -30,7 +31,7 @@ class NfcHandler {
         }
     }
     
-    private fun processAutoScan(isoDep: IsoDep): String {
+    private fun processAutoScan(isoDep: IsoDep, gpoConfig: GpoConfig?): String {
         val sb = StringBuilder()
         sb.append("--- New Session ---\n")
         sb.append("Starting Auto Scan...\n")
@@ -54,7 +55,7 @@ class NfcHandler {
 
                     // 2. Deep Scan
                     if (name != "PPSE") {
-                        sb.append(performDeepScan(isoDep, result))
+                        sb.append(performDeepScan(isoDep, result, gpoConfig))
                     }
 
                 } else {
@@ -73,12 +74,12 @@ class NfcHandler {
         return sb.toString()
     }
     
-    private fun performDeepScan(isoDep: IsoDep, selectResponse: ByteArray): String {
+    private fun performDeepScan(isoDep: IsoDep, selectResponse: ByteArray, gpoConfig: GpoConfig?): String {
         val sb = StringBuilder()
         
         // Dynamic GPO (PDOL Handling)
         val pdol = TlvUtils.findTag(selectResponse, "9F38")
-        val gpoCmd = TlvUtils.constructGpoCommand(pdol)
+        val gpoCmd = TlvUtils.constructGpoCommand(pdol, gpoConfig)
         val gpoRes = transceive(isoDep, gpoCmd)
         
         val gpoSw = ApduUtils.getStatusWord(gpoRes)
@@ -187,7 +188,7 @@ class NfcHandler {
         return sb.toString()
     }
     
-    private fun processManualCommand(isoDep: IsoDep, command: String): String {
+    private fun processManualCommand(isoDep: IsoDep, command: String, gpoConfig: GpoConfig?): String {
         val sb = StringBuilder()
         val cmdHex = command.replace(" ", "")
         sb.append("Tx: $cmdHex\n")
@@ -206,7 +207,7 @@ class NfcHandler {
         // If this is a successful SELECT command, perform deep scan
         if (sw == "9000" && cmdHex.uppercase().startsWith("00A404")) {
             sb.append("\n--- Deep Scan ---\n")
-            sb.append(performDeepScan(isoDep, result))
+            sb.append(performDeepScan(isoDep, result, gpoConfig))
         }
         
         return sb.toString()

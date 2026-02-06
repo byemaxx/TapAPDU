@@ -1,6 +1,7 @@
 package com.byemaxx.tappapdu.utils
 
 import com.byemaxx.tappapdu.model.CardData
+import com.byemaxx.tappapdu.model.GpoConfig
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -148,7 +149,13 @@ object TlvUtils {
     }
 
     fun constructGpoCommand(pdolRaw: ByteArray?): String {
+        return constructGpoCommand(pdolRaw, null)
+    }
+
+    fun constructGpoCommand(pdolRaw: ByteArray?, config: GpoConfig?): String {
         if (pdolRaw == null) return "80A8000002830000" // Default generic GPO
+        
+        val gpoConfig = config ?: GpoConfig() // Use default config if null
 
         val sb = StringBuilder()
         var i = 0
@@ -175,25 +182,46 @@ object TlvUtils {
                 i++
                 
                 // 3. Smart Value Generation
-                val valHex = when(tagHex) {
+                val valHex = when (tagHex) {
+                    "9F02" -> { // Amount, Authorized (授权金额)
+                        val amountHex = String.format("%012d", gpoConfig.amount)
+                        if (len == 6) amountHex else "00".repeat(len)
+                    }
+                    "9F03" -> { // Amount, Other (其他金额)
+                        val otherHex = String.format("%012d", gpoConfig.otherAmount)
+                        if (len == 6) otherHex else "00".repeat(len)
+                    }
+                    "9C" -> { // Transaction Type
+                        if (len == 1) gpoConfig.transactionType else "00".repeat(len)
+                    }
+                    "9F35" -> { // Terminal Type
+                        if (len == 1) gpoConfig.terminalType else "22"
+                    }
+                    "9F33" -> { // Terminal Capabilities
+                        if (len == 3) gpoConfig.terminalCapabilities else "E0E1C8"
+                    }
                     "9F66" -> { // Terminal Transaction Qualifiers (TTQ)
                         // 28 00 00 00 = qVSDC supported, MSD supported, Contactless
-                         if (len == 4) "28000000" else "00".repeat(len) 
+                        if (len == 4) "28000000" else "00".repeat(len)
                     }
                     "9A" -> { // Transaction Date YYMMDD
-                         val date = SimpleDateFormat("yyMMdd", Locale.US).format(Date())
-                         if (len == 3) date else "00".repeat(len)
+                        val date = gpoConfig.transactionDate ?: SimpleDateFormat("yyMMdd", Locale.US).format(Date())
+                        if (len == 3) date else "00".repeat(len)
                     }
                     "9F37" -> { // Unpredictable Number
-                         val rnd = Random()
-                         val b = ByteArray(len)
-                         rnd.nextBytes(b)
-                         ApduUtils.toHexString(b)
+                        val rnd = Random()
+                        val b = ByteArray(len)
+                        rnd.nextBytes(b)
+                        ApduUtils.toHexString(b)
                     }
                     "9F1A", "5F2A" -> { // Country Code / Currency Code
-                         if (len == 2) "0840" else "00".repeat(len) // USA / USD
+                        val code = if (tagHex == "9F1A") gpoConfig.countryCode else gpoConfig.currencyCode
+                        if (len == 2) code else "00".repeat(len)
                     }
-                    else -> "00".repeat(len)
+                    else -> {
+                        // Check if there's a custom value for this tag
+                        gpoConfig.customTags[tagHex] ?: "00".repeat(len)
+                    }
                 }
                 sb.append(valHex)
             }
