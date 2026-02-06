@@ -74,3 +74,50 @@ object CurrencyCodes {
         "30" to "Balance Inquiry"
     )
 }
+
+// Terminal Type presets (Tag 9F35)
+object TerminalTypePresets {
+    val types = mapOf(
+        "22" to "Unattended, Online, No PIN (Contactless)",
+        "12" to "Attended, Online/Offline, PIN Required",
+        "23" to "Attended, Online, No PIN",
+        "26" to "Unattended, Offline, No PIN",
+        "25" to "Unattended, Offline, PIN Required"
+    )
+}
+
+// Terminal Capabilities presets (Tag 9F33)
+object TerminalCapabilitiesPresets {
+    val capabilities = mapOf(
+        "E0E1C8" to "Full support (DDA, CDA, CVM)",
+        "E0F8F8" to "Enhanced",
+        "E0C8C0" to "Basic",
+        "E0F0F8" to "CDA/DDA Support"
+    )
+}
+
+// Country Code presets (Tag 9F1A)
+object CountryCodePresets {
+    val countries = mapOf(
+        "0840" to "USA",
+        "0124" to "Canada",
+        "0156" to "China",
+        "0276" to "Germany",
+        "0344" to "Hong Kong",
+        "0392" to "Japan",
+        "0410" to "South Korea",
+        "0446" to "Macau",
+        "0458" to "Malaysia",
+        "0528" to "Netherlands",
+        "0554" to "New Zealand",
+        "0578" to "Norway",
+        "0643" to "Russia",
+        "0702" to "Singapore",
+        "0710" to "South Africa",
+        "0724" to "Spain",
+        "0752" to "Sweden",
+        "0756" to "Switzerland",
+        "0826" to "United Kingdom",
+        "0978" to "Eurozone"
+    )
+}

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -48,14 +49,17 @@ fun ApduSender(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Input Section
+            // Input Section with internal scrolling
             ConfigurationCard(
                 apduCommand = apduCommand,
                 isAutoMode = isAutoMode,
                                 gpoConfig = gpoConfig,
                 onCommandChange = onCommandChange,
                 onAutoModeChange = onAutoModeChange,
-                onGpoConfigChange = onGpoConfigChange
+                onGpoConfigChange = onGpoConfigChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
             )
 
             // Log Section
@@ -77,14 +81,17 @@ fun ConfigurationCard(
     isAutoMode: Boolean,
     onCommandChange: (String) -> Unit,
     onAutoModeChange: (Boolean) -> Unit,
-    onGpoConfigChange: (GpoConfig) -> Unit
+    onGpoConfigChange: (GpoConfig) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header + Auto Switch
