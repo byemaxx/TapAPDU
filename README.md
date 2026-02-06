@@ -8,6 +8,7 @@ Android NFC APDU console for testing and learning. Tap an NFC card/tag (IsoDep) 
 
 - Manual APDU send (hex)
 - Auto scan common payment AIDs (PPSE/Visa/Mastercard/Amex/UnionPay/Discover/JCB)
+- Trigger mobile wallet activation on target devices for NFC HCE testing
 - On-screen log: Tx/Rx + status word (SW)
 
 ## Requirements
@@ -18,16 +19,15 @@ Android NFC APDU console for testing and learning. Tap an NFC card/tag (IsoDep) 
 
 ## Build & Run
 
-```powershell
+```windows
 .\gradlew.bat :app:assembleDebug
-.\gradlew.bat :app:installDebug
 ```
 
 ## Usage
 
 1. Keep the app in the foreground.
 2. Choose Manual or Auto Scan.
-3. Tap an NFC card/tag and check the log.
+3. Tap an NFC card/tag or target device ( phone, watch, etc.) to send APDUs.
 
 ## License
 

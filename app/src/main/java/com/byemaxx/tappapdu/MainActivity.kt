@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.byemaxx.tappapdu.ui.theme.TapAPDUTheme
 import java.io.IOException
 
 class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
@@ -45,7 +46,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         super.onCreate(savedInstanceState)
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         setContent {
-            MaterialTheme {
+            TapAPDUTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -450,7 +451,7 @@ fun ApduSender(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("POS Simulator", fontWeight = FontWeight.SemiBold) },
+                title = { Text("APDU Tester", fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer

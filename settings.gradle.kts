@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Pos Simulator"
+rootProject.name = "TapAPDU"
 include(":app")
  
