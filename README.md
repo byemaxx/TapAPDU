@@ -2,7 +2,20 @@
 
 Android NFC APDU console for testing and learning. Tap an NFC card/tag (IsoDep) to send APDUs and view responses.
 
-> Disclaimer: This app may display data returned by a payment card. Use only in legal, authorized scenarios.
+## ⚠️ Disclaimer
+
+**FOR EDUCATIONAL AND AUTHORIZED TESTING ONLY**
+
+- Use this tool only for learning, authorized security research, or testing your own devices
+- Do not access payment cards or devices without explicit authorization
+- Never capture, store, or share sensitive card data
+- Users are solely responsible for compliance with applicable laws (CFAA, GDPR, PCI DSS, etc.)
+- Developers disclaim all liability for misuse or illegal activities
+- This software is provided "AS IS" without warranties
+
+**By using this application, you agree to these terms and assume all legal risks.**
+
+---
 
 ## Features
 
