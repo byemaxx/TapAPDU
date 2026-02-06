@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private var nfcAdapter: NfcAdapter? = null
     private val _log = mutableStateOf("")
     private val _apduCommand = mutableStateOf("00A404000E325041592E5359532E444446303100") // Default PPSE
-    private val _isAutoMode = mutableStateOf(false)
+    private val _isAutoMode = mutableStateOf(true)
 
     // Knowledge Base for Command Presets
     private val knownCommands = listOf(
@@ -110,53 +110,114 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
                                 // 2. Deep Scan
                                 if (name != "PPSE") {
-                                    // Generic GPO 
-                                    val gpoCmd = "80A8000002830000" 
+                                    // Dynamic GPO (PDOL Handling)
+                                    val pdol = TlvUtils.findTag(result, "9F38")
+                                    val gpoCmd = TlvUtils.constructGpoCommand(pdol)
                                     val gpoRes = transceive(it, gpoCmd)
                                     
-                                    // Just try reading anyway, some cards respond even without GPO or if GPO fails
-                                    var dataFound = false
-                                    val sfiList = listOf(1, 2)
-                                    val recordList = listOf(1, 2, 3) // Read a bit more
+                                    val gpoSw = ApduUtils.getStatusWord(gpoRes)
+                                    sb.append("   📡 GPO: $gpoSw\n")
                                     
-                                    for (sfi in sfiList) {
-                                        for (rec in recordList) {
-                                            if (dataFound) break
-                                            val p1 = rec 
-                                            val p2 = (sfi shl 3) or 4 
-                                            val readCmd = "00B2${String.format("%02X", p1)}${String.format("%02X", p2)}00"
+                                    // Extract AFL for robust reading
+                                    var afl = TlvUtils.findTag(gpoRes, "94")
+                                    if (afl == null) {
+                                        val val80 = TlvUtils.findTag(gpoRes, "80")
+                                        if (val80 != null && val80.size > 2) {
+                                            afl = val80.copyOfRange(2, val80.size)
+                                        }
+                                    }
+
+                                    // Data Accumulators
+                                    var extractedPan: String? = null
+                                    var extractedExp: String? = null
+                                    var extractedSvc: String? = null
+                                    var extractedCtry: String? = null
+                                    var extractedPsn: String? = null
+                                    var extractedName: String? = null
+                                    var extractedLogEntry: String? = null
+                                    var extractedAtc: String? = null
+
+                                    // Check GPO response first
+                                    val gpoData = TlvUtils.extractCardData(gpoRes)
+                                    if (gpoData != null) {
+                                        if (gpoData.pan != null) extractedPan = gpoData.pan
+                                        if (gpoData.expiry != null) extractedExp = gpoData.expiry
+                                        if (gpoData.serviceCode != null) extractedSvc = gpoData.serviceCode
+                                        if (gpoData.countryCode != null) extractedCtry = gpoData.countryCode
+                                        if (gpoData.psn != null) extractedPsn = gpoData.psn
+                                        if (gpoData.holderName != null) extractedName = gpoData.holderName
+                                        if (gpoData.logEntry != null) extractedLogEntry = gpoData.logEntry
+                                    }
+                                    val gpoAtc = TlvUtils.findTag(gpoRes, "9F36")
+                                    if (gpoAtc != null) extractedAtc = ApduUtils.toHexString(gpoAtc).toInt(16).toString()
+
+
+                                    val recordsToRead = mutableListOf<Pair<Int, Int>>() // SFI, RecordNum
+
+                                    if (afl != null) {
+                                        sb.append("   📂 AFL Found: ${ApduUtils.toHexString(afl)}\n")
+                                        var ptr = 0
+                                        while (ptr + 4 <= afl.size) {
+                                            val sfi = (afl[ptr].toInt() and 0xFF) ushr 3
+                                            val startRec = afl[ptr+1].toInt() and 0xFF
+                                            val endRec = afl[ptr+2].toInt() and 0xFF
                                             
-                                            val readRes = transceive(it, readCmd)
-                                            if (ApduUtils.getStatusWord(readRes) == "9000") {
-                                                val cardData = TlvUtils.extractCardData(readRes)
-                                                if (cardData != null) {
-                                                    sb.append("   💳 PAN: ${cardData.pan}\n")
-                                                    sb.append("   📅 Exp: ${cardData.expiry}\n")
-                                                    
-                                                    if (cardData.serviceCode != null) {
-                                                        val desc = MetaUtils.getServiceCodeDescription(cardData.serviceCode)
-                                                        sb.append("   🔒 Svc: ${cardData.serviceCode} ($desc)\n")
-                                                    }
-                                                    
-                                                    if (cardData.countryCode != null) {
-                                                        val cName = MetaUtils.getCountryName(cardData.countryCode)
-                                                        sb.append("   🌏 Ctry: ${cardData.countryCode} ($cName)\n")
-                                                    }
-                                                    
-                                                    if (cardData.psn != null) sb.append("   🔢 PSN: ${cardData.psn}\n")
-                                                    dataFound = true
-                                                }
-                                                // Check for ATC in records too if needed
+                                            for (r in startRec..endRec) {
+                                                recordsToRead.add(sfi to r)
+                                            }
+                                            ptr += 4
+                                        }
+                                    } else {
+                                        // Fallback Blind Scan
+                                        listOf(1, 2).forEach { s ->
+                                            listOf(1, 2, 3).forEach { r -> recordsToRead.add(s to r) }
+                                        }
+                                    }
+
+                                    // Execute Read Record
+                                    for ((sfi, rec) in recordsToRead) {
+                                        val p2 = (sfi shl 3) or 4
+                                        val readCmd = "00B2${String.format("%02X", rec)}${String.format("%02X", p2)}00"
+                                        val readRes = transceive(it, readCmd)
+                                        
+                                        if (ApduUtils.getStatusWord(readRes) == "9000") {
+                                            val cd = TlvUtils.extractCardData(readRes)
+                                            if (cd != null) {
+                                                if (extractedPan == null && cd.pan != null) extractedPan = cd.pan
+                                                if (extractedExp == null && cd.expiry != null) extractedExp = cd.expiry
+                                                if (extractedSvc == null && cd.serviceCode != null) extractedSvc = cd.serviceCode
+                                                if (extractedCtry == null && cd.countryCode != null) extractedCtry = cd.countryCode
+                                                if (extractedPsn == null && cd.psn != null) extractedPsn = cd.psn
+                                                if (extractedName == null && cd.holderName != null) extractedName = cd.holderName
+                                                if (extractedLogEntry == null && cd.logEntry != null) extractedLogEntry = cd.logEntry
+                                            }
+                                            
+                                            // Also check for ATC in Record payload (Mastercard specifically)
+                                            val recAtc = TlvUtils.findTag(readRes, "9F36")
+                                            if (recAtc != null) {
+                                                extractedAtc = ApduUtils.toHexString(recAtc).toInt(16).toString()
                                             }
                                         }
                                     }
+
+                                    // Final Print
+                                    sb.append("   💳 PAN: ${extractedPan ?: "NOT FOUND"}\n")
+                                    sb.append("   📅 Exp: ${extractedExp ?: "NOT FOUND"}\n")
+                                    sb.append("   👤 Name: ${extractedName ?: "NOT FOUND"}\n")
                                     
-                                    // Also check GPO response itself for ATC
-                                    val atc = TlvUtils.findTag(gpoRes, "9F36")
-                                    if (atc != null) {
-                                         val atcVal = ApduUtils.toHexString(atc).toInt(16)
-                                         sb.append("   📊 ATC: $atcVal (Transactions)\n")
-                                    }
+                                    if (extractedSvc != null) {
+                                        val desc = MetaUtils.getServiceCodeDescription(extractedSvc)
+                                        sb.append("   🔒 Svc: $extractedSvc ($desc)\n")
+                                    } else sb.append("   🔒 Svc: NOT FOUND\n")
+
+                                    if (extractedCtry != null) {
+                                        val cName = MetaUtils.getCountryName(extractedCtry)
+                                        sb.append("   🌏 Ctry: $extractedCtry ($cName)\n")
+                                    } else sb.append("   🌏 Ctry: NOT FOUND\n")
+
+                                    sb.append("   🔢 PSN: ${extractedPsn ?: "NOT FOUND"}\n")
+                                    sb.append("   💸 Log Entry: ${extractedLogEntry ?: "NOT FOUND"}\n")
+                                    sb.append("   #️⃣ ATC: ${extractedAtc?.plus(" (Transactions)") ?: "NOT FOUND"}\n")
                                 }
 
                             } else {
@@ -201,16 +262,27 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     private fun transceive(isoDep: IsoDep, hexCommand: String): ByteArray {
          val cmd = ApduUtils.hexStringToByteArray(hexCommand)
-         return isoDep.transceive(cmd)
+         var response = isoDep.transceive(cmd)
+         
+         // Handle 61xx (More Data Available)
+         while (response.size >= 2 && response[response.size - 2] == 0x61.toByte()) {
+             val len = response[response.size - 1]
+             // 00 C0 00 00 <length>
+             val getResponse = byteArrayOf(0x00, 0xC0.toByte(), 0x00, 0x00, len)
+             response = isoDep.transceive(getResponse)
+         }
+         return response
     }
 }
 
 data class CardData(
-    val pan: String,
-    val expiry: String,
+    val pan: String?,
+    val expiry: String?,
     val serviceCode: String?,
     val countryCode: String?, // Tag 5F28
-    val psn: String?          // Tag 5F34
+    val psn: String?,         // Tag 5F34
+    val holderName: String?,  // Tag 5F20
+    val logEntry: String?     // Tag 9F4D
 )
 
 object MetaUtils {
@@ -283,88 +355,209 @@ object MetaUtils {
 }
 
 object TlvUtils {
+    // Basic TLV parser that looks for a specific tag at the top level or inside constructed tags (70, 77, A5, 61, etc.)
+    // Returns the Value part of the TLV
     fun findTag(data: ByteArray, tagHex: String): ByteArray? {
-        val hexStr = ApduUtils.toHexString(data)
-        
-        val tagIdx = hexStr.indexOf(tagHex)
-        if (tagIdx == -1) return null
-        
+        val targetTag = try {
+            ApduUtils.hexStringToByteArray(tagHex)
+        } catch (e: Exception) { return null }
+
         var i = 0
         while (i < data.size) {
-             if (data[i] == ApduUtils.hexStringToByteArray(tagHex)[0]) {
-                 val tagLenInBytes = tagHex.length / 2
-                 if (i + tagLenInBytes >= data.size) return null
-                 
-                 var match = true
-                 for(j in 0 until tagLenInBytes) {
-                     if (data[i+j] != ApduUtils.hexStringToByteArray(tagHex)[j]) match = false
-                 }
-                 
-                 if (match) {
-                     var lenIdx = i + tagLenInBytes
-                     if (lenIdx >= data.size) return null
-                     var length = data[lenIdx].toInt() and 0xFF
-                     
-                     if (length == 0x81) {
-                         lenIdx++
-                         length = data[lenIdx].toInt() and 0xFF
-                     }
-                     
-                     val startVal = lenIdx + 1
-                     if (startVal + length <= data.size) {
-                         return data.copyOfRange(startVal, startVal + length)
-                     }
-                 }
-             }
-             i++
+            // Skip Padding (00 / FF) - Critical for Visa/EMV compliance
+            val b = data[i].toInt() and 0xFF
+            if (b == 0x00 || b == 0xFF) {
+                i++
+                continue
+            }
+
+            // 1. Tag
+            val tStart = i
+            val firstByte = data[i]
+            i++
+            
+            // Handle multi-byte tags (e.g., 9F, 5F)
+            if ((firstByte.toInt() and 0x1F) == 0x1F) {
+                while (i < data.size) {
+                    val nextB = data[i]
+                    i++
+                    if ((nextB.toInt() and 0x80) == 0) break
+                }
+            }
+            val tEnd = i
+            val currentTag = data.copyOfRange(tStart, tEnd)
+            
+            // 2. Length
+            if (i >= data.size) break
+            var len = data[i].toInt() and 0xFF
+            i++
+            if (len == 0x81) {
+                if (i >= data.size) break
+                len = data[i].toInt() and 0xFF
+                i++
+            } else if (len == 0x82) { // Just in case larger lengths
+                 if (i + 1 >= data.size) break
+                 len = ((data[i].toInt() and 0xFF) shl 8) or (data[i+1].toInt() and 0xFF)
+                 i += 2
+            } else if (len > 0x82) {
+                 // Should not happen for standard EMV, but safe break
+                 break
+            }
+            
+            if (i + len > data.size) break // Invalid length or data lookup out of bounds
+            
+            val value = data.copyOfRange(i, i + len)
+            
+            // Check if this is the tag we want
+            if (java.util.Arrays.equals(currentTag, targetTag)) {
+                return value
+            }
+            
+            // Check if this is a constructed tag (contains other tags)
+            // Mask 0x20 in first byte indicates constructed
+            if ((firstByte.toInt() and 0x20) != 0) {
+                 val result = findTag(value, tagHex)
+                 if (result != null) return result
+            }
+            
+            i += len
         }
         return null
     }
     
     fun extractCardData(data: ByteArray): CardData? {
         var pan: String? = null
-        var expiry: String = "Unknown"
+        var expiry: String? = null
         var serviceCode: String? = null
         
-        // Priority 1: Tag 5A (PAN)
+        // Priority 1: Tag 5A (PAN) - Must be strictly numeric
         val panBytes = findTag(data, "5A")
         if (panBytes != null) {
-            val panRaw = ApduUtils.toHexString(panBytes)
-            pan = panRaw.trimEnd('F')
-            val expBytes = findTag(data, "5F24") // Application Expiration Date
-            if(expBytes != null) expiry = ApduUtils.toHexString(expBytes)
+            val panRaw = ApduUtils.toHexString(panBytes).trimEnd('F')
+            if (panRaw.matches(Regex("^[0-9]+$")) && panRaw.length in 12..19) {
+                pan = panRaw
+                val expBytes = findTag(data, "5F24") // Application Expiration Date
+                if(expBytes != null) {
+                    val rawDate = ApduUtils.toHexString(expBytes) // YYMMDD
+                    if (rawDate.length >= 4) {
+                        expiry = "${rawDate.substring(2,4)}/20${rawDate.substring(0,2)}" // MM/YYYY
+                    }
+                }
+            }
         }
         
         // Priority 2: Tag 57 (Track 2 Equiv)
-        val track2Bytes = findTag(data, "57") 
-        if (track2Bytes != null) {
-             val t2 = ApduUtils.toHexString(track2Bytes)
-             val separator = t2.indexOf('D')
-             if (separator != -1) {
-                 if (pan == null) pan = t2.substring(0, separator)
-                 val expStart = separator + 1
-                 if (expStart + 4 <= t2.length) {
-                     val t2Exp = t2.substring(expStart, expStart + 4)
-                     if (expiry == "Unknown") expiry = t2Exp
-                     
-                     val svcStart = expStart + 4
-                     if (svcStart + 3 <= t2.length) {
-                         serviceCode = t2.substring(svcStart, svcStart + 3)
+        // Format: PAN + 'D' + Expiry(YYMM) + ServiceCode + Discretional
+        if (pan == null) {
+            val track2Bytes = findTag(data, "57") ?: findTag(data, "9F6B")
+            if (track2Bytes != null) {
+                 val t2 = ApduUtils.toHexString(track2Bytes)
+                 val separator = t2.indexOf('D')
+                 if (separator != -1) {
+                     val potentialPan = t2.substring(0, separator)
+                     // Valid PAN: 12-19 digits, strictly numeric
+                     if (potentialPan.length in 12..19 && potentialPan.matches(Regex("^[0-9]+$"))) {
+                         pan = potentialPan
+                         
+                         val expStart = separator + 1
+                         if (expStart + 4 <= t2.length) {
+                             val t2Exp = t2.substring(expStart, expStart + 4) // YYMM
+                             // Just update expiry if we haven't found a better one
+                             if (expiry == null) {
+                                 expiry = "${t2Exp.substring(2,4)}/20${t2Exp.substring(0,2)}"
+                             }
+                             
+                             val svcStart = expStart + 4
+                             if (svcStart + 3 <= t2.length) {
+                                 serviceCode = t2.substring(svcStart, svcStart + 3)
+                             }
+                         }
                      }
                  }
-             }
+            }
         }
         
-        if (pan != null) {
-            val countryBytes = findTag(data, "5F28")
-            val countryCode = if (countryBytes != null) ApduUtils.toHexString(countryBytes) else null
-            
-            val psnBytes = findTag(data, "5F34")
-            val psn = if (psnBytes != null) ApduUtils.toHexString(psnBytes) else null
-            
-            return CardData(pan, expiry, serviceCode, countryCode, psn)
+        // Independent Extraction of Country and PSN
+        val countryBytes = findTag(data, "5F28")
+        val countryCode = if (countryBytes != null) ApduUtils.toHexString(countryBytes) else null
+        
+        val psnBytes = findTag(data, "5F34")
+        val psn = if (psnBytes != null) ApduUtils.toHexString(psnBytes) else null
+
+        val nameBytes = findTag(data, "5F20")
+        val holderName = if (nameBytes != null) ApduUtils.toAsciiString(nameBytes).trim() else null
+
+        val logEntryBytes = findTag(data, "9F4D")
+        val logEntry = if (logEntryBytes != null) ApduUtils.toHexString(logEntryBytes) else null
+        
+        // Return object if ANY field is found (allows partial updates)
+        if (pan != null || expiry != null || serviceCode != null || countryCode != null || psn != null || holderName != null || logEntry != null) {
+            return CardData(pan, expiry, serviceCode, countryCode, psn, holderName, logEntry)
         }
         return null
+    }
+
+    fun constructGpoCommand(pdolRaw: ByteArray?): String {
+        if (pdolRaw == null) return "80A8000002830000" // Default generic GPO
+
+        val sb = StringBuilder()
+        var i = 0
+        while (i < pdolRaw.size) {
+            // 1. Tag parsing
+            val tagStart = i
+            val tag1 = pdolRaw[i]
+            i++
+            // If b1-b5 are 1, it's a multi-byte tag
+            if ((tag1.toInt() and 0x1F) == 0x1F) {
+                // Read subsequent bytes
+                while (i < pdolRaw.size) {
+                    val nextByte = pdolRaw[i]
+                    i++
+                    // If MSB is 0, it's the last byte of tag
+                    if ((nextByte.toInt() and 0x80) == 0) break 
+                }
+            }
+            val tagHex = ApduUtils.toHexString(pdolRaw.copyOfRange(tagStart, i))
+
+            // 2. Length parsing
+            if (i < pdolRaw.size) {
+                val len = pdolRaw[i].toInt() and 0xFF
+                i++
+                
+                // 3. Smart Value Generation
+                val valHex = when(tagHex) {
+                    "9F66" -> { // Terminal Transaction Qualifiers (TTQ)
+                        // 28 00 00 00 = qVSDC supported, MSD supported, Contactless
+                         if (len == 4) "28000000" else "00".repeat(len) 
+                    }
+                    "9A" -> { // Transaction Date YYMMDD
+                         val date = java.text.SimpleDateFormat("yyMMdd", java.util.Locale.US).format(java.util.Date())
+                         if (len == 3) date else "00".repeat(len)
+                    }
+                    "9F37" -> { // Unpredictable Number
+                         val rnd = java.util.Random()
+                         val b = ByteArray(len)
+                         rnd.nextBytes(b)
+                         ApduUtils.toHexString(b)
+                    }
+                    "9F1A", "5F2A" -> { // Country Code / Currency Code
+                         if (len == 2) "0840" else "00".repeat(len) // USA / USD
+                    }
+                    else -> "00".repeat(len)
+                }
+                sb.append(valHex)
+            }
+        }
+        
+        val valueBody = sb.toString()
+        val lenVal = valueBody.length / 2
+        
+        // Command Data: 83 + L + Value
+        // Note: simplified length encoding (works for length < 128)
+        val dataField = "83${String.format("%02X", lenVal)}$valueBody"
+        val lc = dataField.length / 2
+        
+        return "80A80000${String.format("%02X", lc)}${dataField}00" 
     }
 }
 
