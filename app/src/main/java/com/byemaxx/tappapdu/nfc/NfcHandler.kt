@@ -203,6 +203,12 @@ class NfcHandler {
         if (label != null) sb.append("Label: ${ApduUtils.toAsciiString(label)}\n")
         else if (ascii.isNotEmpty()) sb.append("TXT: $ascii\n")
         
+        // If this is a successful SELECT command, perform deep scan
+        if (sw == "9000" && cmdHex.uppercase().startsWith("00A404")) {
+            sb.append("\n--- Deep Scan ---\n")
+            sb.append(performDeepScan(isoDep, result))
+        }
+        
         return sb.toString()
     }
     
